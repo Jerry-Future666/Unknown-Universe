@@ -1,84 +1,32 @@
 import { CONFIG } from "./config.js";
 
-
-// ============================================================
-// Unknown Universe v0.5
-// Particle Engine
-//
-// 负责整个粒子系统的运行。
-// 不负责具体的星球、星环和剧情。
-// ============================================================
-
 export class ParticleEngine {
 
     constructor(canvas) {
 
         this.canvas = canvas;
 
-        this.ctx =
-            canvas.getContext("2d", {
-                alpha: false
-            });
+        this.ctx = canvas.getContext("2d");
 
-
-        // ----------------------------------------------------
-        // Canvas 尺寸
-        // ----------------------------------------------------
+        if (!this.ctx) {
+            throw new Error("Canvas 2D context unavailable.");
+        }
 
         this.width = 0;
         this.height = 0;
 
-
-        // ----------------------------------------------------
-        // 粒子集合
-        // ----------------------------------------------------
-
         this.particles = [];
 
-
-        // ----------------------------------------------------
-        // 系统时间
-        // ----------------------------------------------------
-
-        this.time = 0;
-
-        this.lastTime = performance.now();
-
-
-        // ----------------------------------------------------
-        // 摄像机
-        //
-        // camera.js 完成后会正式接管。
-        // 这里先建立兼容接口。
-        // ----------------------------------------------------
-
         this.camera = {
-
             x: 0,
-
             y: 0,
-
             z: 0,
-
             centerX: 0,
-
             centerY: 0,
-
             focalLength: 700
-
         };
 
-
-        // ----------------------------------------------------
-        // 运行状态
-        // ----------------------------------------------------
-
         this.running = false;
-
-
-        // ----------------------------------------------------
-        // 初始化 Canvas
-        // ----------------------------------------------------
 
         this.resize();
 
@@ -86,55 +34,30 @@ export class ParticleEngine {
             "resize",
             () => this.resize()
         );
-
     }
 
 
-
-    // ========================================================
-    // Canvas 尺寸调整
-    // ========================================================
-
     resize() {
 
-        const dpr =
-            Math.min(
-                window.devicePixelRatio || 1,
-                2
-            );
+        const dpr = Math.min(
+            window.devicePixelRatio || 1,
+            2
+        );
 
-
-        this.width =
-            window.innerWidth;
-
-
-        this.height =
-            window.innerHeight;
-
-
-        // ----------------------------------------------------
-        // 实际渲染分辨率
-        //
-        // DPR 最大限制为 2。
-        // 手机高分辨率屏幕如果无限提高 Canvas 分辨率，
-        // 会明显增加 GPU / CPU 压力。
-        // ----------------------------------------------------
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
 
         this.canvas.width =
-            this.width * dpr;
-
+            Math.floor(this.width * dpr);
 
         this.canvas.height =
-            this.height * dpr;
-
+            Math.floor(this.height * dpr);
 
         this.canvas.style.width =
             this.width + "px";
 
-
         this.canvas.style.height =
             this.height + "px";
-
 
         this.ctx.setTransform(
             dpr,
@@ -145,126 +68,34 @@ export class ParticleEngine {
             0
         );
 
-
-        // ----------------------------------------------------
-        // 摄像机中心
-        // ----------------------------------------------------
-
         this.camera.centerX =
             this.width / 2;
 
-
         this.camera.centerY =
             this.height / 2;
-
     }
 
-
-
-    // ========================================================
-    // 添加粒子
-    // ========================================================
 
     addParticle(particle) {
 
-        this.particles.push(
-            particle
-        );
+        this.particles.push(particle);
 
     }
 
-
-
-    // ========================================================
-    // 批量添加粒子
-    // ========================================================
-
-    addParticles(particles) {
-
-        if (!particles) return;
-
-
-        for (
-            let i = 0;
-            i < particles.length;
-            i++
-        ) {
-
-            this.particles.push(
-                particles[i]
-            );
-
-        }
-
-    }
-
-
-
-    // ========================================================
-    // 清空粒子
-    // ========================================================
-
-    clearParticles() {
-
-        this.particles.length = 0;
-
-    }
-
-
-
-    // ========================================================
-    // 更新所有粒子
-    // ========================================================
 
     update(time) {
 
-        for (
-            let i = 0;
-            i < this.particles.length;
-            i++
-        ) {
-
-            this.particles[i].update(
-                time
-            );
-
+        for (const particle of this.particles) {
+            particle.update(time);
+            particle.project(this.camera);
         }
 
     }
 
-
-
-    // ========================================================
-    // 投影所有粒子
-    // ========================================================
-
-    project() {
-
-        for (
-            let i = 0;
-            i < this.particles.length;
-            i++
-        ) {
-
-            this.particles[i].project(
-                this.camera
-            );
-
-        }
-
-    }
-
-
-
-    // ========================================================
-    // 绘制背景
-    // ========================================================
 
     clear() {
 
-        this.ctx.fillStyle =
-            CONFIG.background;
-
+        this.ctx.fillStyle = "#000000";
 
         this.ctx.fillRect(
             0,
@@ -276,129 +107,60 @@ export class ParticleEngine {
     }
 
 
+    render() {
 
-    // ========================================================
-    // 绘制粒子
-    //
-    // 当前只是基础渲染。
-    // planet.js 后面会建立更高级的粒子绘制逻辑。
-    // ========================================================
+        const ctx = this.ctx;
 
-    renderParticles() {
+        ctx.save();
 
-        const ctx =
-            this.ctx;
+        for (const particle of this.particles) {
 
+            const size =
+                Math.max(
+                    0.8,
+                    particle.screenSize
+                );
 
-        const color =
-            CONFIG.particleColor;
-
-
-
-        for (
-            let i = 0;
-            i < this.particles.length;
-            i++
-        ) {
-
-            const p =
-                this.particles[i];
-
-
-            if (
-                p.screenSize <= 0 ||
-                p.screenAlpha <= 0
-            ) {
-
-                continue;
-
-            }
-
-
+            const alpha =
+                Math.max(
+                    0.15,
+                    Math.min(
+                        particle.screenAlpha,
+                        1
+                    )
+                );
 
             ctx.beginPath();
 
-
             ctx.arc(
-                p.screenX,
-                p.screenY,
-                p.screenSize,
+                particle.screenX,
+                particle.screenY,
+                size,
                 0,
                 Math.PI * 2
             );
 
-
-            const brightness =
-                p.getBrightness();
-
-
             ctx.fillStyle =
-                `rgba(
-                    ${color.r},
-                    ${color.g},
-                    ${color.b},
-                    ${brightness}
-                )`;
-
+                `rgba(235,238,240,${alpha})`;
 
             ctx.fill();
-
         }
+
+        ctx.restore();
 
     }
 
-
-
-    // ========================================================
-    // 单帧渲染
-    // ========================================================
 
     frame(time) {
 
-        // ----------------------------------------------------
-        // 时间
-        // ----------------------------------------------------
-
-        this.time =
-            time;
-
-
-        // ----------------------------------------------------
-        // 清空
-        // ----------------------------------------------------
-
         this.clear();
 
+        this.update(time);
 
-        // ----------------------------------------------------
-        // 更新
-        // ----------------------------------------------------
-
-        this.update(
-            time
-        );
-
-
-        // ----------------------------------------------------
-        // 三维 → 二维投影
-        // ----------------------------------------------------
-
-        this.project();
-
-
-        // ----------------------------------------------------
-        // 绘制
-        // ----------------------------------------------------
-
-        this.renderParticles();
+        this.render();
 
     }
 
-
-
-    // ========================================================
-    // 启动引擎
-    // ========================================================
 
     start() {
 
@@ -406,46 +168,27 @@ export class ParticleEngine {
             return;
         }
 
-
         this.running = true;
 
+        const loop = (time) => {
 
-        const loop =
-            (time) => {
+            if (!this.running) {
+                return;
+            }
 
-                if (!this.running) {
-                    return;
-                }
+            this.frame(time);
 
+            requestAnimationFrame(loop);
+        };
 
-                this.frame(
-                    time
-                );
-
-
-                requestAnimationFrame(
-                    loop
-                );
-
-            };
-
-
-        requestAnimationFrame(
-            loop
-        );
+        requestAnimationFrame(loop);
 
     }
 
 
-
-    // ========================================================
-    // 停止引擎
-    // ========================================================
-
     stop() {
 
-        this.running =
-            false;
+        this.running = false;
 
     }
 
