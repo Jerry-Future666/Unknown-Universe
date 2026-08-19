@@ -1,29 +1,90 @@
+// ============================================================
+// Unknown Universe v0.5
+// Main Entry
+// ============================================================
+
+
 import { ParticleEngine } from "./engine.js";
-import { Particle } from "./particle.js";
 
-const canvas = document.getElementById("universe");
+import { Planet } from "./planet.js";
 
-if (!canvas) {
-    throw new Error("Canvas #universe not found.");
-}
 
-const engine = new ParticleEngine(canvas);
 
-// 创建测试粒子
-for (let i = 0; i < 300; i++) {
+// ============================================================
+// 获取 Canvas
+// ============================================================
 
-    const x = Math.random() * window.innerWidth;
-    const y = Math.random() * window.innerHeight;
-
-    const particle = new Particle(
-        x - window.innerWidth / 2,
-        y - window.innerHeight / 2,
-        Math.random() * 600 - 300
+const canvas =
+    document.getElementById(
+        "universe"
     );
 
-    engine.addParticle(particle);
+
+
+if (!canvas) {
+
+    throw new Error(
+        "Unknown Universe: Canvas #universe not found."
+    );
+
 }
+
+
+
+// ============================================================
+// 创建引擎
+// ============================================================
+
+const engine =
+    new ParticleEngine(
+        canvas
+    );
+
+
+
+// ============================================================
+// 创建未知天体
+// ============================================================
+
+const planet =
+    new Planet(
+        engine
+    );
+
+
+
+// ============================================================
+// 加入场景
+// ============================================================
+
+engine.addObject(
+    planet
+);
+
+
+
+// ============================================================
+// 暴露开发接口
+// ============================================================
+
+window.UnknownUniverse = {
+
+    engine,
+
+    planet
+
+};
+
+
+
+// ============================================================
+// 启动
+// ============================================================
 
 engine.start();
 
-window.UnknownUniverse = engine;
+
+
+console.log(
+    "Unknown Universe v0.5 — Planet Engine Online."
+);
