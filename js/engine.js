@@ -1,45 +1,66 @@
-import { CONFIG } from "./config.js";
-
-
 // ============================================================
-// Unknown Universe v0.5
+// Unknown Universe v0.6
 // Particle / Scene Engine
 //
-// 当前负责：
-// Canvas
-// 时间循环
-// 摄像机基础状态
-// 场景对象更新与渲染
+// Engine
 //
-// 具体天体由 planet.js 自己负责。
+// 当前负责：
+// 1. Canvas
+// 2. 时间循环
+// 3. 摄像机基础状态
+// 4. 场景对象管理
+// 5. 统一 Renderer
+//
+// 注意：
+// Planet / Ring 不再直接负责最终绘制。
+// Renderer 统一处理所有粒子的：
+// 投影 → 深度排序 → 绘制
 // ============================================================
 
+
+import { CONFIG } from "./config.js";
+import { Renderer } from "./renderer.js";
+
+
+
+// ============================================================
+// Particle Engine
+// ============================================================
 
 export class ParticleEngine {
 
     constructor(canvas) {
 
-        this.canvas = canvas;
+        this.canvas =
+            canvas;
+
 
         this.ctx =
-            canvas.getContext("2d", {
-                alpha: false
-            });
+            canvas.getContext(
+                "2d",
+                {
+                    alpha: false
+                }
+            );
 
 
         if (!this.ctx) {
+
             throw new Error(
                 "Canvas 2D context unavailable."
             );
+
         }
 
 
+
         // ----------------------------------------------------
-        // Canvas
+        // Canvas 尺寸
         // ----------------------------------------------------
 
         this.width = 0;
         this.height = 0;
+
 
 
         // ----------------------------------------------------
@@ -49,17 +70,22 @@ export class ParticleEngine {
         this.objects = [];
 
 
+
         // ----------------------------------------------------
-        // 兼容旧粒子系统
+        // 旧粒子接口
         //
-        // 后面会逐渐移除。
+        // 暂时保留。
+        // 防止旧代码调用时报错。
+        //
+        // 正式系统不会再依赖它。
         // ----------------------------------------------------
 
         this.particles = [];
 
 
+
         // ----------------------------------------------------
-        // 摄像机基础状态
+        // 摄像机
         // ----------------------------------------------------
 
         this.camera = {
@@ -79,26 +105,49 @@ export class ParticleEngine {
         };
 
 
+
         // ----------------------------------------------------
         // 时间
         // ----------------------------------------------------
 
         this.time = 0;
 
-
         this.running = false;
 
 
+
         // ----------------------------------------------------
-        // 初始化
+        // Renderer
+        //
+        // Renderer 使用 Engine 的 camera。
+        // ----------------------------------------------------
+
+        this.renderer =
+            new Renderer(
+                this
+            );
+
+
+
+        // ----------------------------------------------------
+        // 初始化尺寸
         // ----------------------------------------------------
 
         this.resize();
 
 
+
+        // ----------------------------------------------------
+        // 浏览器尺寸变化
+        // ----------------------------------------------------
+
         window.addEventListener(
             "resize",
-            () => this.resize()
+            () => {
+
+                this.resize();
+
+            }
         );
 
     }
@@ -118,6 +167,7 @@ export class ParticleEngine {
             );
 
 
+
         this.width =
             window.innerWidth;
 
@@ -126,25 +176,36 @@ export class ParticleEngine {
             window.innerHeight;
 
 
+
         this.canvas.width =
             Math.floor(
-                this.width * dpr
+                this.width *
+                dpr
             );
 
 
         this.canvas.height =
             Math.floor(
-                this.height * dpr
+                this.height *
+                dpr
             );
 
 
+
         this.canvas.style.width =
-            this.width + "px";
+            this.width +
+            "px";
 
 
         this.canvas.style.height =
-            this.height + "px";
+            this.height +
+            "px";
 
+
+
+        // ----------------------------------------------------
+        // 使用 CSS 像素作为逻辑坐标。
+        // ----------------------------------------------------
 
         this.ctx.setTransform(
             dpr,
@@ -156,12 +217,18 @@ export class ParticleEngine {
         );
 
 
+
+        // ----------------------------------------------------
+        // 摄像机屏幕中心
+        // ----------------------------------------------------
+
         this.camera.centerX =
             this.width / 2;
 
 
         this.camera.centerY =
             this.height / 2;
+
 
 
         // ----------------------------------------------------
@@ -201,12 +268,23 @@ export class ParticleEngine {
     addObject(object) {
 
         if (!object) {
+
             return;
+
         }
 
 
         this.objects.push(
             object
+        );
+
+
+        // ----------------------------------------------------
+        // Renderer 同步场景对象
+        // ----------------------------------------------------
+
+        this.renderer.setObjects(
+            this.objects
         );
 
     }
@@ -225,7 +303,9 @@ export class ParticleEngine {
             );
 
 
-        if (index !== -1) {
+        if (
+            index !== -1
+        ) {
 
             this.objects.splice(
                 index,
@@ -233,6 +313,11 @@ export class ParticleEngine {
             );
 
         }
+
+
+        this.renderer.setObjects(
+            this.objects
+        );
 
     }
 
@@ -246,6 +331,11 @@ export class ParticleEngine {
 
         this.objects.length = 0;
 
+
+        this.renderer.setObjects(
+            this.objects
+        );
+
     }
 
 
@@ -255,6 +345,13 @@ export class ParticleEngine {
     // ========================================================
 
     addParticle(particle) {
+
+        if (!particle) {
+
+            return;
+
+        }
+
 
         this.particles.push(
             particle
@@ -277,7 +374,7 @@ export class ParticleEngine {
 
 
     // ========================================================
-    // 更新
+    // 更新所有场景对象
     // ========================================================
 
     update(time) {
@@ -332,142 +429,14 @@ export class ParticleEngine {
 
 
     // ========================================================
-    // 渲染场景
+    // 统一渲染
     // ========================================================
 
     render() {
 
-        const ctx =
-            this.ctx;
-
-
-        ctx.save();
-
-
-        // ----------------------------------------------------
-        // 先渲染场景对象
-        // ----------------------------------------------------
-
-        for (
-            let i = 0;
-            i < this.objects.length;
-            i++
-        ) {
-
-            const object =
-                this.objects[i];
-
-
-            if (
-                object &&
-                typeof object.render ===
-                "function"
-            ) {
-
-                object.render(
-                    ctx
-                );
-
-            }
-
-        }
-
-
-        // ----------------------------------------------------
-        // 暂时保留旧粒子渲染接口
-        //
-        // 正式系统以后会移除。
-        // ----------------------------------------------------
-
-        if (
-            this.particles.length > 0
-        ) {
-
-            this.renderLegacyParticles();
-
-        }
-
-
-        ctx.restore();
-
-    }
-
-
-
-    // ========================================================
-    // 旧测试粒子渲染
-    // ========================================================
-
-    renderLegacyParticles() {
-
-        const ctx =
-            this.ctx;
-
-
-        const color =
-            CONFIG.particleColor;
-
-
-        for (
-            let i = 0;
-            i < this.particles.length;
-            i++
-        ) {
-
-            const particle =
-                this.particles[i];
-
-
-            if (
-                particle.screenSize <= 0
-            ) {
-
-                continue;
-
-            }
-
-
-            const size =
-                Math.max(
-                    0.8,
-                    particle.screenSize
-                );
-
-
-            const alpha =
-                Math.max(
-                    0.15,
-                    Math.min(
-                        particle.screenAlpha,
-                        1
-                    )
-                );
-
-
-            ctx.beginPath();
-
-
-            ctx.arc(
-                particle.screenX,
-                particle.screenY,
-                size,
-                0,
-                Math.PI * 2
-            );
-
-
-            ctx.fillStyle =
-                `rgba(
-                    ${color.r},
-                    ${color.g},
-                    ${color.b},
-                    ${alpha}
-                )`;
-
-
-            ctx.fill();
-
-        }
+        this.renderer.render(
+            this.ctx
+        );
 
     }
 
@@ -483,13 +452,36 @@ export class ParticleEngine {
             time;
 
 
+        // ----------------------------------------------------
+        // 1. 清空上一帧
+        // ----------------------------------------------------
+
         this.clear();
 
+
+
+        // ----------------------------------------------------
+        // 2. 更新三维世界
+        //
+        // Planet / Ring 在这里计算：
+        //
+        // x
+        // y
+        // z
+        //
+        // ----------------------------------------------------
 
         this.update(
             time
         );
 
+
+
+        // ----------------------------------------------------
+        // 3. Renderer 统一投影
+        //
+        // 所有粒子进入同一个深度排序队列。
+        // ----------------------------------------------------
 
         this.render();
 
@@ -503,19 +495,29 @@ export class ParticleEngine {
 
     start() {
 
-        if (this.running) {
+        if (
+            this.running
+        ) {
+
             return;
+
         }
 
 
-        this.running = true;
+        this.running =
+            true;
+
 
 
         const loop =
             (time) => {
 
-                if (!this.running) {
+                if (
+                    !this.running
+                ) {
+
                     return;
+
                 }
 
 
@@ -529,6 +531,7 @@ export class ParticleEngine {
                 );
 
             };
+
 
 
         requestAnimationFrame(
