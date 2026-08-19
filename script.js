@@ -1,62 +1,74 @@
 const canvas = document.getElementById("universe");
 const ctx = canvas.getContext("2d");
 
-
 let width;
 let height;
 
-
 function resize(){
-
     width = canvas.width = window.innerWidth;
     height = canvas.height = window.innerHeight;
-
 }
 
-
 window.addEventListener("resize", resize);
-
 resize();
 
 
-// 粒子数量
-const particleCount = 500;
 
+const particleCount = 550;
 
 let particles = [];
 
 
-// 创建粒子
+
+function random(min,max){
+    return Math.random()*(max-min)+min;
+}
+
+
 
 function createParticles(){
 
-    particles = [];
+    particles=[];
 
-    for(let i = 0; i < particleCount; i++){
+    for(let i=0;i<particleCount;i++){
+
+        let depth=Math.random();
+
 
         particles.push({
 
-            x: Math.random() * width,
-            y: Math.random() * height,
+            x:Math.random()*width,
+            y:Math.random()*height,
 
-            // 模拟深度
-            z: Math.random(),
 
-            size: Math.random() * 1.8 + 0.5,
+            // 深度
+            z:depth,
 
-            speedX:
-            (Math.random()-0.5)*0.15,
 
-            speedY:
-            (Math.random()-0.5)*0.15,
+            // 基础大小
+            size:random(0.3,1.8),
+
+
+            // 运动
+            vx:random(-0.08,0.08),
+            vy:random(-0.08,0.08),
+
+
+            // 波动参数
+            angle:Math.random()*Math.PI*2,
+
+            wave:random(0.001,0.006),
+
+
+            // 呼吸
+            breathe:Math.random()*Math.PI*2,
+
+            breatheSpeed:
+            random(0.005,0.02),
 
 
             opacity:
-            Math.random()*0.5+0.2,
-
-
-            breathe:
-            Math.random()*Math.PI*2
+            random(0.15,0.65)
 
         });
 
@@ -69,11 +81,15 @@ createParticles();
 
 
 
-// 绘制
 
-function draw(){
 
-    ctx.clearRect(
+function drawSpace(){
+
+    // 黑色空间
+
+    ctx.fillStyle="#000";
+
+    ctx.fillRect(
         0,
         0,
         width,
@@ -81,45 +97,94 @@ function draw(){
     );
 
 
+    // 极弱空间雾
+
+    let gradient =
+    ctx.createRadialGradient(
+        width/2,
+        height/2,
+        50,
+        width/2,
+        height/2,
+        width
+    );
+
+
+    gradient.addColorStop(
+        0,
+        "rgba(255,255,255,0.025)"
+    );
+
+    gradient.addColorStop(
+        1,
+        "rgba(0,0,0,0)"
+    );
+
+
+    ctx.fillStyle=gradient;
+
+    ctx.fillRect(
+        0,
+        0,
+        width,
+        height
+    );
+
+}
+
+
+
+
+
+function drawParticles(){
+
     particles.forEach(p=>{
 
 
-        // 运动
+        // 自然漂移
 
-        p.x += p.speedX;
-        p.y += p.speedY;
-
+        p.angle += p.wave;
 
 
-        // 超出返回
-
-        if(p.x < -20)
-            p.x = width+20;
-
-        if(p.x > width+20)
-            p.x = -20;
+        p.x += 
+        p.vx +
+        Math.cos(p.angle)*0.03;
 
 
-        if(p.y < -20)
-            p.y = height+20;
+        p.y +=
+        p.vy +
+        Math.sin(p.angle)*0.03;
 
-        if(p.y > height+20)
-            p.y = -20;
+
+
+        // 循环空间
+
+        if(p.x< -30)
+            p.x=width+30;
+
+        if(p.x>width+30)
+            p.x=-30;
+
+
+        if(p.y< -30)
+            p.y=height+30;
+
+        if(p.y>height+30)
+            p.y=-30;
 
 
 
         // 呼吸
 
-        p.breathe += 0.01;
+        p.breathe += p.breatheSpeed;
 
 
-        let glow =
-        p.opacity +
-        Math.sin(p.breathe)*0.1;
+        let breathe =
+        (Math.sin(p.breathe)+1)/2;
 
 
 
-        // 深度模拟
+        // 深度
 
         let depth =
         0.5+p.z;
@@ -130,6 +195,56 @@ function draw(){
         p.size*depth;
 
 
+
+        let alpha =
+        p.opacity*
+        (0.7+breathe*0.5);
+
+
+
+        // 光晕
+
+        let glow =
+        ctx.createRadialGradient(
+            p.x,
+            p.y,
+            0,
+            p.x,
+            p.y,
+            size*5
+        );
+
+
+        glow.addColorStop(
+            0,
+            `rgba(255,255,255,${alpha})`
+        );
+
+
+        glow.addColorStop(
+            1,
+            "rgba(255,255,255,0)"
+        );
+
+
+        ctx.fillStyle=glow;
+
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            size*5,
+            0,
+            Math.PI*2
+        );
+
+        ctx.fill();
+
+
+
+        // 中心粒子
 
         ctx.beginPath();
 
@@ -142,20 +257,31 @@ function draw(){
         );
 
 
-        ctx.fillStyle =
-        `rgba(255,255,255,${glow})`;
+        ctx.fillStyle=
+        `rgba(255,255,255,${alpha})`;
 
 
         ctx.fill();
 
 
+
     });
-
-
-    requestAnimationFrame(draw);
 
 }
 
 
 
-draw();
+
+
+function animate(){
+
+    drawSpace();
+
+    drawParticles();
+
+    requestAnimationFrame(animate);
+
+}
+
+
+animate();
