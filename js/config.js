@@ -31,17 +31,14 @@ export const CONFIG = {
 
     planet: {
 
-        // 相对于屏幕短边的比例
-        radius: 0.42,
+    radius: 0.40,
 
-        // 天体中心位置
-        offsetX: -0.12,
-        offsetY: 0.50,
+    offsetX: -0.28,
+    offsetY: 0.50,
 
-        // 自转速度
-        rotationSpeed: 0.0008
+    rotationSpeed: 0.0008
 
-    },
+},
 
 
     // ========================================================
