@@ -34,7 +34,7 @@ export const CONFIG = {
     radius: 0.40,
 
     offsetX: -0.28,
-    offsetY: 0.50,
+    offsetY: 0,
 
     rotationSpeed: 0.0008
 
