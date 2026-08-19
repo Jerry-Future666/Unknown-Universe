@@ -328,17 +328,17 @@ export class Planet {
 
 
             const rotatedX =
-                x *
-                cosRotation -
-                z *
-                sinRotation;
+    x *
+    cosRotation +
+    z *
+    sinRotation;
 
 
-            const rotatedZ =
-                x *
-                sinRotation +
-                z *
-                cosRotation;
+const rotatedZ =
+    -x *
+    sinRotation +
+    z *
+    cosRotation;
 
 
             particle.baseX =
