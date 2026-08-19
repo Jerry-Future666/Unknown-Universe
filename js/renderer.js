@@ -1,22 +1,18 @@
 // ============================================================
 // Unknown Universe v0.6
-// Unified Renderer
+// Renderer
 //
-// 所有天体进入同一个渲染队列。
+// 统一三维粒子渲染器
 //
-// Planet
-// Ring
-// Future Objects
-//      ↓
-// Unified Particle Queue
-//      ↓
-// Camera Projection
-//      ↓
-// Z Depth Sort
-//      ↓
-// Canvas
+// Renderer 是整个视觉系统唯一负责：
 //
-// 这是解决“星环与星球没有真实遮挡”的核心。
+// 1. 三维投影
+// 2. 深度计算
+// 3. 深度排序
+// 4. 粒子绘制
+//
+// Planet / Ring 不再负责最终绘制。
+// 它们只负责计算粒子的三维世界坐标。
 // ============================================================
 
 
@@ -26,71 +22,58 @@ import { CONFIG } from "./config.js";
 
 export class Renderer {
 
-    constructor(
-        ctx,
-        camera
-    ) {
+    constructor(engine) {
 
-        this.ctx =
-            ctx;
+        this.engine =
+            engine;
 
         this.camera =
-            camera;
+            engine.camera;
 
-
-        // ====================================================
-        // 统一粒子队列
-        // ====================================================
-
-        this.particles = [];
-
-
-        // ====================================================
-        // 临时排序数组
-        //
-        // 避免每帧重新创建大量对象。
-        // ====================================================
-
-        this.sortedParticles = [];
-
-
-        // ====================================================
-        // 渲染统计
-        //
-        // 调试阶段使用。
-        // ====================================================
-
-        this.stats = {
-
-            total: 0,
-
-            visible: 0
-
-        };
+        this.objects = [];
 
     }
 
 
 
     // ========================================================
-    // 收集场景粒子
+    // 设置场景对象
     // ========================================================
 
-    collect(
-        objects
-    ) {
+    setObjects(objects) {
 
-        this.particles.length = 0;
+        this.objects =
+            objects || [];
 
+    }
+
+
+
+    // ========================================================
+    // 主渲染入口
+    // ========================================================
+
+    render(ctx) {
+
+        const renderQueue = [];
+
+
+        // ----------------------------------------------------
+        // 收集所有场景粒子
+        //
+        // Planet 和 Ring 在这里被视为同一个三维空间。
+        // ----------------------------------------------------
 
         for (
-            let i = 0;
-            i < objects.length;
-            i++
+            let objectIndex = 0;
+            objectIndex < this.objects.length;
+            objectIndex++
         ) {
 
             const object =
-                objects[i];
+                this.objects[
+                    objectIndex
+                ];
 
 
             if (
@@ -105,18 +88,44 @@ export class Renderer {
             }
 
 
-            const particles =
-                object.particles;
+            // ------------------------------------------------
+            // 天体的屏幕位置偏移
+            //
+            // 当前项目的 Planet.centerX / centerY
+            // 是相对于 Canvas 中心的天体位置偏移。
+            //
+            // 这里统一处理。
+            // ------------------------------------------------
 
+            const offsetX =
+                Number.isFinite(
+                    object.centerX
+                )
+                    ? object.centerX
+                    : 0;
+
+
+            const offsetY =
+                Number.isFinite(
+                    object.centerY
+                )
+                    ? object.centerY
+                    : 0;
+
+
+
+            // ------------------------------------------------
+            // 收集粒子
+            // ------------------------------------------------
 
             for (
-                let j = 0;
-                j < particles.length;
-                j++
+                let i = 0;
+                i < object.particles.length;
+                i++
             ) {
 
                 const particle =
-                    particles[j];
+                    object.particles[i];
 
 
                 if (!particle) {
@@ -126,114 +135,302 @@ export class Renderer {
                 }
 
 
-                this.particles.push(
-                    particle
-                );
+                // ------------------------------------------------
+                // 获取粒子的真实三维世界坐标
+                //
+                // v0.6 开始：
+                //
+                // x / y / z
+                //
+                // 才是 Renderer 认可的最终世界坐标。
+                //
+                // baseX / baseY / baseZ
+                // 仅作为兼容旧系统的备用值。
+                // ------------------------------------------------
+
+                const x =
+                    Number.isFinite(
+                        particle.x
+                    )
+                        ? particle.x
+                        : particle.baseX;
+
+
+                const y =
+                    Number.isFinite(
+                        particle.y
+                    )
+                        ? particle.y
+                        : particle.baseY;
+
+
+                const z =
+                    Number.isFinite(
+                        particle.z
+                    )
+                        ? particle.z
+                        : particle.baseZ;
+
+
+                if (
+                    !Number.isFinite(x) ||
+                    !Number.isFinite(y) ||
+                    !Number.isFinite(z)
+                ) {
+
+                    continue;
+
+                }
+
+
+
+                // ------------------------------------------------
+                // 相机深度
+                // ------------------------------------------------
+
+                const depth =
+                    z -
+                    this.camera.z;
+
+
+                // ------------------------------------------------
+                // 透视
+                // ------------------------------------------------
+
+                const perspective =
+                    this.calculatePerspective(
+                        depth
+                    );
+
+
+                if (
+                    perspective <= 0
+                ) {
+
+                    continue;
+
+                }
+
+
+
+                // ------------------------------------------------
+                // 屏幕坐标
+                //
+                // 注意：
+                //
+                // Camera center
+                // +
+                // 天体位置偏移
+                // +
+                // 粒子投影
+                //
+                // 所有中心计算现在集中在 Renderer。
+                // ------------------------------------------------
+
+                const screenX =
+                    this.camera.centerX +
+                    offsetX +
+                    x *
+                    perspective;
+
+
+                const screenY =
+                    this.camera.centerY +
+                    offsetY +
+                    y *
+                    perspective;
+
+
+
+                // ------------------------------------------------
+                // 深度透明度
+                // ------------------------------------------------
+
+                const depthFade =
+                    this.calculateDepthFade(
+                        depth
+                    );
+
+
+
+                // ------------------------------------------------
+                // 粒子视觉属性
+                // ------------------------------------------------
+
+                const baseSize =
+                    Number.isFinite(
+                        particle.baseSize
+                    )
+                        ? particle.baseSize
+                        : (
+                            Number.isFinite(
+                                particle.size
+                            )
+                                ? particle.size
+                                : 1
+                        );
+
+
+                const breath =
+                    Number.isFinite(
+                        particle.breath
+                    )
+                        ? particle.breath
+                        : 1;
+
+
+                const brightness =
+                    Number.isFinite(
+                        particle.brightness
+                    )
+                        ? particle.brightness
+                        : (
+                            Number.isFinite(
+                                particle.baseBrightness
+                            )
+                                ? particle.baseBrightness
+                                : 1
+                        );
+
+
+                // ------------------------------------------------
+                // 天体光照
+                //
+                // Planet 粒子拥有 planetLight。
+                //
+                // Ring 没有时默认 1。
+                // ------------------------------------------------
+
+                const lightFactor =
+                    Number.isFinite(
+                        particle.planetLight
+                    )
+                        ? particle.planetLight
+                        : 1;
+
+
+
+                // ------------------------------------------------
+                // 最终粒子尺寸
+                // ------------------------------------------------
+
+                const screenSize =
+                    Math.max(
+                        0.35,
+                        baseSize *
+                        perspective *
+                        breath
+                    );
+
+
+
+                // ------------------------------------------------
+                // 最终透明度
+                //
+                // 故意保持克制。
+                //
+                // Unknown Universe 不允许重新出现
+                // 大面积廉价光晕。
+                // ------------------------------------------------
+
+                const alpha =
+                    clamp(
+                        brightness *
+                        lightFactor *
+                        depthFade,
+                        0,
+                        0.82
+                    );
+
+
+
+                if (
+                    alpha <= 0.01
+                ) {
+
+                    continue;
+
+                }
+
+
+
+                // ------------------------------------------------
+                // 加入统一渲染队列
+                // ------------------------------------------------
+
+                renderQueue.push({
+
+                    particle,
+
+                    x: screenX,
+
+                    y: screenY,
+
+                    size: screenSize,
+
+                    alpha,
+
+                    depth,
+
+                    objectIndex
+
+                });
 
             }
 
         }
 
 
-        this.stats.total =
-            this.particles.length;
 
-    }
+        // ====================================================
+        // 统一深度排序
+        // ====================================================
 
+        // ----------------------------------------------------
+        // 当前 Camera 投影逻辑：
+        //
+        // depth 越大 = 离摄像机越远
+        //
+        // 因此：
+        //
+        // 远 → 近
+        //
+        // 才能保证近处粒子覆盖远处粒子。
+        // ----------------------------------------------------
 
+        renderQueue.sort(
+            (a, b) => {
 
-    // ========================================================
-    // 投影
-    // ========================================================
+                if (
+                    a.depth !==
+                    b.depth
+                ) {
 
-    project() {
+                    return (
+                        b.depth -
+                        a.depth
+                    );
 
-        let visibleCount = 0;
-
-
-        for (
-            let i = 0;
-            i < this.particles.length;
-            i++
-        ) {
-
-            const particle =
-                this.particles[i];
-
-
-            this.camera.project(
-                particle
-            );
-
-
-            if (
-                particle.visible
-            ) {
-
-                visibleCount++;
-
-            }
-
-        }
+                }
 
 
-        this.stats.visible =
-            visibleCount;
-
-    }
-
-
-
-    // ========================================================
-    // 深度排序
-    //
-    // 当前 Camera 坐标约定：
-    //
-    // depth 越大 = 越远
-    //
-    // 因此：
-    //
-    // 远 → 近
-    //
-    // 使用：
-    //
-    // b.depth - a.depth
-    //
-    // ========================================================
-
-    sortByDepth() {
-
-        this.sortedParticles =
-            this.particles.slice();
-
-
-        this.sortedParticles.sort(
-            (
-                a,
-                b
-            ) => {
+                // ------------------------------------------------
+                // 深度完全相同时保持稳定排序。
+                // ------------------------------------------------
 
                 return (
-                    b.depth -
-                    a.depth
+                    a.objectIndex -
+                    b.objectIndex
                 );
 
             }
         );
 
-    }
 
 
-
-    // ========================================================
-    // 绘制
-    // ========================================================
-
-    render() {
-
-        const ctx =
-            this.ctx;
-
+        // ====================================================
+        // 绘制
+        // ====================================================
 
         const color =
             CONFIG.particleColor;
@@ -241,85 +438,29 @@ export class Renderer {
 
         for (
             let i = 0;
-            i <
-            this.sortedParticles.length;
+            i < renderQueue.length;
             i++
         ) {
 
-            const particle =
-                this.sortedParticles[i];
+            const item =
+                renderQueue[i];
 
-
-            if (
-                !particle.visible
-            ) {
-
-                continue;
-
-            }
-
-
-            // ------------------------------------------------
-            // 基础尺寸
-            // ------------------------------------------------
-
-            const size =
-                Math.max(
-                    0.3,
-                    particle.screenSize
-                );
-
-
-            if (
-                size <= 0
-            ) {
-
-                continue;
-
-            }
-
-
-            // ------------------------------------------------
-            // 最终亮度
-            // ------------------------------------------------
-
-            const brightness =
-                clamp(
-                    particle.getBrightness(
-                        particle.lightFactor
-                    ) *
-                    particle.screenAlpha,
-                    0,
-                    0.85
-                );
-
-
-            if (
-                brightness <= 0.01
-            ) {
-
-                continue;
-
-            }
-
-
-            // ------------------------------------------------
-            // 绘制粒子
-            //
-            // 使用普通 source-over。
-            //
-            // 不使用强光叠加。
-            // ------------------------------------------------
 
             ctx.beginPath();
 
 
             ctx.arc(
-                particle.screenX,
-                particle.screenY,
-                size,
+
+                item.x,
+
+                item.y,
+
+                item.size,
+
                 0,
+
                 Math.PI * 2
+
             );
 
 
@@ -328,7 +469,7 @@ export class Renderer {
                     ${color.r},
                     ${color.g},
                     ${color.b},
-                    ${brightness}
+                    ${item.alpha}
                 )`;
 
 
@@ -341,42 +482,97 @@ export class Renderer {
 
 
     // ========================================================
-    // 完整渲染流程
+    // 透视计算
     // ========================================================
 
-    renderScene(
-        objects
-    ) {
+    calculatePerspective(depth) {
 
-        // ----------------------------------------------------
-        // 1. 收集
-        // ----------------------------------------------------
+        const focalLength =
+            this.camera.focalLength;
 
-        this.collect(
-            objects
+
+        const denominator =
+            focalLength +
+            depth;
+
+
+        if (
+            denominator <= 0.001
+        ) {
+
+            return 0;
+
+        }
+
+
+        const perspective =
+            focalLength /
+            denominator;
+
+
+        return clamp(
+            perspective,
+            0.15,
+            3
         );
 
-
-        // ----------------------------------------------------
-        // 2. 投影
-        // ----------------------------------------------------
-
-        this.project();
+    }
 
 
-        // ----------------------------------------------------
-        // 3. 深度排序
-        // ----------------------------------------------------
 
-        this.sortByDepth();
+    // ========================================================
+    // 深度淡出
+    // ========================================================
+
+    calculateDepthFade(depth) {
+
+        const range =
+            CONFIG.space.depthRange;
 
 
-        // ----------------------------------------------------
-        // 4. 绘制
-        // ----------------------------------------------------
+        if (
+            range <= 0
+        ) {
 
-        this.render();
+            return 1;
+
+        }
+
+
+        return clamp(
+
+            1 -
+            Math.abs(depth) /
+            range,
+
+            0.12,
+
+            1
+
+        );
 
     }
+
+}
+
+
+
+// ============================================================
+// 工具函数
+// ============================================================
+
+function clamp(
+    value,
+    min,
+    max
+) {
+
+    return Math.max(
+        min,
+        Math.min(
+            max,
+            value
+        )
+    );
 
 }
