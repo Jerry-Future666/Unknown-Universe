@@ -27,11 +27,11 @@ window.addEventListener("resize",resize);
 
 const planet={
 
-    x:-w*0.05,
+    x:w*0.18,
 
     y:h/2,
 
-    radius:h*0.55,
+    radius:Math.min(w,h)*0.52,
 
     rotation:0
 
@@ -203,7 +203,7 @@ function drawPlanet(){
     planetParticles.forEach(p=>{
 
 
-        p.theta+=p.speed;
+        p.theta-=p.speed;
 
 
 
